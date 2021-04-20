@@ -13,7 +13,7 @@ For the Docker bits, everything included is an accumulation of Docker best
 practices based on building and deploying dozens of assorted Dockerized web
 apps since late 2014.
 
-**This app is using Rails 6.1.0 and Ruby 2.7.2**. The screenshot doesn't get
+**This app is using Rails 6.1.3 and Ruby 2.7.2**. The screenshot doesn't get
 updated every time I bump the versions:
 
 [![Screenshot](.github/docs/screenshot.jpg)](https://github.com/nickjj/docker-rails-example/blob/main/.github/docs/screenshot.jpg?raw=true)
@@ -26,7 +26,7 @@ updated every time I bump the versions:
 - [Files of interest](#files-of-interest)
   - [`.env`](#env)
   - [`run`](#run)
-- [Making this app your own](#making-this-app-your-own)
+- [Running a script to automate renaming the project](#running-a-script-to-automate-renaming-the-project)
 - [Updating dependencies](#updating-dependencies)
 - [See a way to improve something?](#see-a-way-to-improve-something)
 - [Additional resources](#additional-resources)
@@ -53,6 +53,7 @@ out for something else on your own.
 - [Hotwire](https://hotwire.dev/)
 - [StimulusJS](https://stimulusjs.org/)
 - [TailwindCSS](https://tailwindcss.com/)
+- [Heroicons](https://heroicons.com/)
 
 ## Main changes vs a newly generated Rails app
 
@@ -75,6 +76,7 @@ Dockerize an existing Rails app.
     - `.yarnc` sets a custom `node_modules/` directory
     - `config/initializers/assets.rb` references a custom `node_modules/` directory
     - `config/webpack/custom.js` references a custom `node_modules/` directory
+    - `config/routes.rb` has Sidekiq's dashboard ready to be used but commented out for safety
 - **Public:**
     - Custom `502.html` and `maintenance.html` pages
     - Generate favicons using modern best practices
@@ -103,7 +105,7 @@ these commands for PowerShell if you want.
 git clone https://github.com/nickjj/docker-rails-example hellorails
 cd hellorails
 
-# Optionally checkout a specific tag, such as: git checkout 0.1.0
+# Optionally checkout a specific tag, such as: git checkout 0.2.0
 ```
 
 #### Copy a few example files because the real files are git ignored:
@@ -200,109 +202,54 @@ functions as you want. This file's purpose is to make your experience better!
 `alias run=./run` in your `~/.bash_aliases` or equivalent file. Then you'll be
 able to run `run` instead of `./run`.*
 
-## Making this app your own
+## Running a script to automate renaming the project
 
 The app is named `hello` right now but chances are your app will be a different
 name. Since the app is already created we'll need to do a find / replace on a
 few variants of the string "hello" and update a few Docker related resources.
 
-You can do that from the command line without needing to install any extra
-dependencies by following the instructions below.
+And by we I mean I created a zero dependency shell script that does all of the
+heavy lifting for you. All you have to do is run the script below.
 
-#### Remove the original Docker resources:
-
-When the hello app was first upped with Docker Compose a new database, user and
-password was created automatically based on the values of certain environment
-variables.
-
-Along with that a few Docker resources were created too. Those need to be
-updated. The easiest way to do that is by removing the old Docker resources and
-deleting the database. We can do all of that in 1 command.
-
-*Don't worry, you won't have to wait 5-10 minutes again when you up your newly
-named project. Docker still that information safely tucked away and it can be
-re-used in projects with different names.*
+#### Run the rename-project script included in this repo:
 
 ```sh
-# This removes the PostgreSQL database volume along with a few other Docker
-# resources that were created and are associated to the hello app.
-docker-compose down -v
+# The script takes 2 arguments.
+#
+# The first one is the lower case version of your app's name, such as myapp or
+# my_app depending on your preference.
+#
+# The second one is used for your app's module name. For example if you used
+# myapp or my_app for the first argument you would want to use MyApp here.
+bin/rename-project myapp MyApp
 ```
 
-#### Run these commands from the same directory as this git repo:
+The [bin/rename-project
+script](https://github.com/nickjj/docker-rails-example/blob/main/bin/rename-project)
+is going to:
 
-```sh
-# Change hello and Hello to be whatever you want your app name to be. This
-# would be similar to what you would name your app if you ran rails new.
-#
-# After renaming these values, paste both variables into your terminal.
-lower=hello
-module=Hello
+- Remove any Docker resources for your current project
+- Perform a number of find / replace actions
+- Optionally initialize a new git repo for you
 
-# If you wanted a multi-word app name you could do:
-# lower=my_app
-# module=MyApp
-#
-# or:
-#
-# lower=myapp
-# module=MyApp
-#
-# The choice is yours!
+If you're not comfy running the script or it doesn't work for whatever reasons
+you can [check it
+out](https://github.com/nickjj/docker-rails-example/blob/main/bin/rename-project)
+and perform the actions manually. It's mostly running a find / replace across
+files and then renaming a few directories and files.
 
-# Recursively replace hello in a few ways using the values defined above.
-#
-# You don't need to edit this command before running it in your terminal.
-find . -type f -exec perl -i -pe "s/(hellorails|hello)/${lower}/g" {} + \
-  && find . -type f -exec perl -i -pe "s/Hello/${module}/g" {} +
-```
-
-If you're not comfortable running these commands or they don't work for
-whatever reason, you can also do a case sensitive find / replace within your
-code editor too. There's nothing special going on here. It's literally
-replacing "hellorails" and "hello" with your lowercase app name and then doing
-the same for "Hello" for the module name.
-
-#### Verify everything was changed successfully:
-
-```sh
-grep -ER --exclude-dir public/ "(hello|Hello)" .
-```
-
-You should get back no output. That means all occurrences of hello and Hello
-were replaced.
-
-```sh
-grep -ER --exclude README.md --exclude-dir .git/ --exclude-dir node_modules/ \
-  --exclude-dir public/ --exclude-dir tmp/ "(${lower}|${module})" .
-```
-
-You should get back a bunch of output showing you where your app name is
-referenced within the project.
-
-#### Remove the `.git` directory and init a new git repo:
-
-This project is not meant to be a long running fork. It's your freshly minted
-project that is ready for you to start modifying based on whatever cool app you
-want to build.
-
-```sh
-rm -rf .git/
-git init
-
-# Optionally use main as a branch instead of master. CI is configured to work
-# with both main and master btw.
-git symbolic-ref HEAD refs/heads/main
-```
+*Afterwards you can delete this script because its only purpose is to assist in
+helping you change this project's name without depending on any complicated
+project generator tools or 3rd party dependencies.*
 
 #### Start and setup the project:
 
-We don't need to rebuild anything yet. Upping it is enough for Docker to
-re-create new resources with the new name. We'll also need to setup our
-database since a new one will be created for us by Docker.
+This won't take as long as before because Docker can re-use most things. We'll
+also need to setup our database since a new one will be created for us by
+Docker.
 
 ```sh
-docker-compose up
+docker-compose up --build
 
 # Then in a 2nd terminal once it's up and ready.
 ./run rails db:setup
@@ -343,15 +290,26 @@ much appreciated!
 Let's say you've customized your app and it's time to make a change to your
 `Gemfile` or `package.json` file.
 
-Without Docker you'd normally run `bundle` or `yarn`. With Docker it's
-basically the same thing and since these commands are in our `Dockerfile` we
-can get away with doing a `docker-compose build` but don't run that just yet.
+Without Docker you'd normally run `bundle install` or `yarn install`. With
+Docker it's basically the same thing and since these commands are in our
+`Dockerfile` we can get away with doing a `docker-compose build` but don't run
+that just yet.
 
 #### In development:
 
-You'll want to run `./run bundle` or `./run yarn`. That'll make sure any lock
-files get copied from Docker's image (thanks to volumes) into your code repo
-and now you can commit those files to version control like usual.
+You can run `./run bundle:outdated` or `./run yarn:outdated` to get a list of
+outdated dependencies based on what you currently have installed. Once you've
+figured out what you want to update, go make those updates in your `Gemfile`
+and / or `package.json` file.
+
+Then to update your dependencies you can run `./run bundle:install` or `./run
+yarn:install`. That'll make sure any lock files get copied from Docker's image
+(thanks to volumes) into your code repo and now you can commit those files to
+version control like usual.
+
+Alternatively for updating your gems based on specific version ranges defined
+in your `Gemfile` you can run `./run bundle:update` which will install the
+latest versions of your gems and then write out a new lock file.
 
 You can check out the `run` file to see what these commands do in more detail.
 

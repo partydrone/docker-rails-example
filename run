@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 
-set -e
+set -eo pipefail
 
 DC="${DC:-exec}"
-APP_NAME="${APP_NAME:-hello}"
 
 # If we're running in CI we need to disable TTY allocation for docker-compose
 # commands that enable it by default, such as exec and run.
@@ -12,44 +11,79 @@ if [[ ! -t 1 ]]; then
   TTY="-T"
 fi
 
+# -----------------------------------------------------------------------------
+# Helper functions start with _ and aren't listed in this script's help menu.
+# -----------------------------------------------------------------------------
+
+function _dc {
+  docker-compose "${DC}" ${TTY} "${@}"
+}
+
+function _build_run_down {
+  docker-compose build
+  docker-compose run ${TTY} "${@}"
+  docker-compose down
+}
+
+# -----------------------------------------------------------------------------
+
+function cmd {
+  # Run any command you want in the web container
+  _dc web "${@}"
+}
+
 function rails {
-  ## Run any Rails commands
+  # Run any Rails commands
 
   # We need to create the test packs before we run our tests.
-  if [ "${1}" == "test" ]; then
-    docker-compose "${DC}" ${TTY} -e "RAILS_ENV=test" webpacker rails webpacker:compile
+  if [ "${1-''}" == "test" ]; then
+    _dc -e "RAILS_ENV=test" webpacker rails webpacker:compile
   fi
 
-  docker-compose "${DC}" ${TTY} web rails "${@}"
+  cmd rails "${@}"
 }
 
 function bash {
   ## Start a Bash session in the web container
-  docker-compose "${DC}" ${TTY} web bash "${@}"
+  cmd bash "${@}"
 }
 
 function psql {
   ## Connect to PostgreSQL with psql
-  docker-compose "${DC}" ${TTY} postgres psql -U "${APP_NAME}" "${@}"
+  # shellcheck disable=SC1091
+  . .env
+ _dc postgres psql -U "${POSTGRES_USER}" "${@}"
 }
 
 function redis-cli {
   ## Connect to Redis with redis-cli
-  docker-compose "${DC}" ${TTY} redis redis-cli "${@}"
+  _dc redis redis-cli "${@}"
 }
 
-function bundle {
+function bundle:install {
   ## Install Ruby dependencies and write out a lock file
-  docker-compose build
-  docker-compose run ${TTY} web bundle "${@}"
-  docker-compose down
+  _build_run_down web bundle install
 }
 
-function yarn {
+function bundle:outdated {
+  ## List any installed gems that are outdated
+  cmd bundle outdated
+}
+
+function bundle:update {
+  ## Update any installed gems that are outdated
+  cmd bundle update
+  bundle:install
+}
+
+function yarn:install {
   ## Install Yarn dependencies and write out a lock file
-  docker-compose build
-  docker-compose run ${TTY} webpacker yarn "${@}"
-  docker-compose down
+  _build_run_down webpacker yarn install
+}
+
+function yarn:outdated {
+  ## Install yarn dependencies and write lock file
+  _dc webpacker yarn outdated
 }
 
 function clean {
@@ -91,15 +125,16 @@ function ci:test {
   # to exist when running tests, we need to run our tests from the webpacker
   # container instead of the web container since the web container won't have
   # the packs in it.
-  docker-compose "${DC}" ${TTY} webpacker rails "${@}"
+  _dc -e "RAILS_ENV=test" webpacker rails webpacker:compile
+  _dc webpacker rails test
 }
 
 function help {
-    printf "%s <task> [args]\n\nTasks:\n" "${0}"
+  printf "%s <task> [args]\n\nTasks:\n" "${0}"
 
-    compgen -A function | cat -n
+  compgen -A function | grep -v "^_" | cat -n
 
-    printf "\nExtended help:\n  Each task has comments for general usage\n"
+  printf "\nExtended help:\n  Each task has comments for general usage\n"
 }
 
 # This idea is heavily inspired by: https://github.com/adriancooney/Taskfile
